@@ -1,0 +1,36 @@
+regle,seuil,alertes,faux_positifs,detectee,premiere_alerte_utile,Mo_deja_sortis
+Rafale d'échecs AD (échecs en 10 min),2.0,2,0,True,2026-09-12 01:00:00+0200,0.0
+Rafale d'échecs AD (échecs en 10 min),3.0,2,0,True,2026-09-12 01:02:00+0200,0.0
+Rafale d'échecs AD (échecs en 10 min),4.0,2,0,True,2026-09-12 01:04:00+0200,0.0
+Rafale d'échecs AD (échecs en 10 min),5.0,2,0,True,2026-09-12 01:06:00+0200,0.0
+Rafale d'échecs AD (échecs en 10 min),6.0,2,0,True,2026-09-12 01:08:00+0200,0.0
+Rafale d'échecs AD (échecs en 10 min),7.0,1,0,True,2026-09-14 02:03:00+0200,0.0
+Rafale d'échecs AD (échecs en 10 min),8.0,1,0,True,2026-09-14 02:03:20+0200,0.0
+Rafale d'échecs AD (échecs en 10 min),9.0,0,0,False,,
+Rafale d'échecs AD (échecs en 10 min),10.0,0,0,False,,
+Balayage pare-feu (couples serveur:port/min),3.0,7,6,True,2026-09-12 01:05:04+0200,0.0
+Balayage pare-feu (couples serveur:port/min),4.0,1,0,True,2026-09-12 01:05:04+0200,0.0
+Balayage pare-feu (couples serveur:port/min),5.0,1,0,True,2026-09-12 01:05:04+0200,0.0
+Balayage pare-feu (couples serveur:port/min),6.0,1,0,True,2026-09-12 01:05:04+0200,0.0
+Balayage pare-feu (couples serveur:port/min),8.0,1,0,True,2026-09-12 01:05:07+0200,0.0
+Balayage pare-feu (couples serveur:port/min),10.0,1,0,True,2026-09-12 01:05:07+0200,0.0
+Balayage pare-feu (couples serveur:port/min),15.0,1,0,True,2026-09-12 01:05:10+0200,0.0
+Balayage pare-feu (couples serveur:port/min),20.0,1,0,True,2026-09-12 01:05:13+0200,0.0
+Balayage pare-feu (couples serveur:port/min),30.0,1,0,True,2026-09-12 01:05:19+0200,0.0
+Balayage pare-feu (couples serveur:port/min),40.0,1,0,True,2026-09-12 01:05:26+0200,0.0
+Volume envoyé vers un hôte (octets/heure),1000.0,13813,13802,True,2026-09-11 11:14:40+0200,0.0
+Volume envoyé vers un hôte (octets/heure),10000.0,2,0,True,2026-09-19 03:37:00+0200,8.0
+Volume envoyé vers un hôte (octets/heure),100000.0,2,0,True,2026-09-19 03:37:00+0200,8.0
+Volume envoyé vers un hôte (octets/heure),1000000.0,2,0,True,2026-09-19 03:37:00+0200,8.0
+Volume envoyé vers un hôte (octets/heure),10000000.0,2,0,True,2026-09-19 03:37:12+0200,13.0
+Volume envoyé vers un hôte (octets/heure),50000000.0,2,0,True,2026-09-19 03:38:36+0200,55.0
+Volume envoyé vers un hôte (octets/heure),100000000.0,2,0,True,2026-09-19 03:40:12+0200,106.0
+Volume envoyé vers un hôte (octets/heure),500000000.0,1,0,True,2026-09-19 03:52:12+0200,500.0
+Volume envoyé vers un hôte (octets/heure),1000000000.0,0,0,False,,
+Mail livré : score minimal,20.0,590,585,True,2026-09-11 10:48:00+0200,0.0
+Mail livré : score minimal,30.0,59,58,True,2026-09-11 10:48:00+0200,0.0
+Mail livré : score minimal,40.0,1,0,True,2026-09-11 10:48:00+0200,0.0
+Mail livré : score minimal,50.0,1,0,True,2026-09-11 10:48:00+0200,0.0
+Mail livré : score minimal,55.0,1,0,True,2026-09-11 10:48:00+0200,0.0
+Mail livré : score minimal,58.0,1,0,True,2026-09-11 10:48:00+0200,0.0
+Mail livré : score minimal,59.0,0,0,False,,

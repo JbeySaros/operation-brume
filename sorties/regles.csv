@@ -1,0 +1,29 @@
+code,regle,variante,alertes,rattachees,faux_positifs,premiere_alerte_utile,avance_sur_exfiltration,avance_sur_chiffrement,Mo_deja_sortis
+R01,Courriel piégé livré,stricte,1,1,0,2026-09-11 10:48:00+0200,7 j 16 h 49 min,8 j 18 h 37 min,0.0
+R01,Courriel piégé livré,large,1,1,0,2026-09-11 10:48:00+0200,7 j 16 h 49 min,8 j 18 h 37 min,0.0
+R01,Courriel piégé livré,naïve,59,1,58,2026-09-11 10:48:00+0200,7 j 16 h 49 min,8 j 18 h 37 min,0.0
+R02,Hôte web nouveau + formulaire,stricte,2,2,0,2026-09-11 11:14:40+0200,7 j 16 h 22 min,8 j 18 h 10 min,0.0
+R02,Hôte web nouveau + formulaire,large,2,2,0,2026-09-11 11:14:00+0200,7 j 16 h 23 min,8 j 18 h 11 min,0.0
+R03,Alerte EDR critique non close,stricte,4,4,0,2026-09-14 02:57:00+0200,5 j 0 h 40 min,6 j 2 h 28 min,0.0
+R03,Alerte EDR critique non close,large,5,5,0,2026-09-11 11:20:00+0200,7 j 16 h 17 min,8 j 18 h 05 min,0.0
+R04,Alerte EDR nocturne (22h-6h),stricte,4,4,0,2026-09-14 02:57:00+0200,5 j 0 h 40 min,6 j 2 h 28 min,0.0
+R05,VPN : succès après échec du 2e facteur,stricte,2,2,0,2026-09-11 23:17:00+0200,7 j 4 h 20 min,8 j 6 h 08 min,0.0
+R06,VPN : déplacement impossible,stricte,2,2,0,2026-09-11 23:15:00+0200,7 j 4 h 22 min,8 j 6 h 10 min,0.0
+R06,VPN : pays inhabituel pour le compte,large,6,6,0,2026-09-11 23:14:00+0200,7 j 4 h 23 min,8 j 6 h 11 min,0.0
+R06,VPN : IP jamais vue pour le compte,naïve,1843,16,1827,2026-09-11 11:57:46+0200,7 j 15 h 39 min,8 j 17 h 27 min,0.0
+R07,AD : source hors parc (IP externe),stricte,21,21,0,2026-09-12 00:58:00+0200,7 j 2 h 39 min,8 j 4 h 27 min,0.0
+R07,AD : source absente de l'inventaire,large,25,21,4,2026-09-12 00:58:00+0200,7 j 2 h 39 min,8 j 4 h 27 min,0.0
+R08,AD : refus sur plusieurs serveurs,stricte,1,1,0,2026-09-12 01:02:00+0200,7 j 2 h 35 min,8 j 4 h 23 min,0.0
+R08,AD : refus sur plusieurs serveurs,large,1,1,0,2026-09-12 01:00:00+0200,7 j 2 h 37 min,8 j 4 h 25 min,0.0
+R09,AD : rafale d'échecs,stricte,2,2,0,2026-09-12 01:06:00+0200,7 j 2 h 31 min,8 j 4 h 19 min,0.0
+R09,AD : rafale d'échecs,large,2,2,0,2026-09-12 01:02:00+0200,7 j 2 h 35 min,8 j 4 h 23 min,0.0
+R09,AD : 5 échecs cumulés sur 3 semaines,naïve,6,2,4,2026-09-12 01:04:00+0200,7 j 2 h 33 min,8 j 4 h 21 min,0.0
+R10,AD : session RDP (type 10),stricte,1,1,0,2026-09-14 02:05:00+0200,5 j 1 h 32 min,6 j 3 h 20 min,0.0
+R11,AD : privilèges + création + ajout admin,stricte,1,1,0,2026-09-14 02:30:00+0200,5 j 1 h 07 min,6 j 2 h 55 min,0.0
+R11,AD : toute création de compte,large,5,1,4,2026-09-14 02:29:00+0200,5 j 1 h 08 min,6 j 2 h 56 min,0.0
+R12,Pare-feu : balayage interne,stricte,1,1,0,2026-09-12 01:05:07+0200,7 j 2 h 31 min,8 j 4 h 19 min,0.0
+R12,Pare-feu : balayage interne,large,1,1,0,2026-09-12 01:05:04+0200,7 j 2 h 31 min,8 j 4 h 19 min,0.0
+R13,Pare-feu : port quasi jamais utilisé,stricte,1,1,0,2026-09-12 01:05:01+0200,7 j 2 h 31 min,8 j 4 h 19 min,0.0
+R14,Pare-feu : IP absente de l'inventaire,stricte,1,1,0,2026-09-12 01:05:01+0200,7 j 2 h 31 min,8 j 4 h 19 min,0.0
+R15,Proxy : envoi massif vers un hôte (> 50 Mo/h),stricte,2,2,0,2026-09-19 03:38:36+0200,-0 h 01 min,1 j 1 h 46 min,55.0
+R15,Proxy : envoi massif vers un hôte (> 1 Mo/h),large,2,2,0,2026-09-19 03:37:00+0200,0 h 00 min,1 j 1 h 48 min,8.0

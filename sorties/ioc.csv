@@ -1,0 +1,20 @@
+type,valeur,role,confiance,preuve
+courriel,comptabilite@fourniseur-x.example,expéditeur du courriel piégé (domaine sosie de fournisseur-x.example),élevée,mail_gateway.csv:L1153
+fichier,facture_relance.pdf.htm,pièce jointe à double extension,élevée,mail_gateway.csv:L1153
+url,https://nordis-compta-auth.example/connexion,page d'hameçonnage,élevée,mail_gateway.csv:L1153
+domaine,nordis-compta-auth.example,hameçonnage (domaine imitant un service interne),élevée,"proxy_web.csv:L15405,15408"
+compte,l.perrin,compte compromis en premier (poste PC-SIE-1000),élevée,proxy + VPN + EDR-10203
+ip,203.0.113.87,IP externe de l'attaquant (VPN + AD) ; 4 pays déclarés pour une seule IP,élevée,"vpn_auth.csv:L1347,1348,1349,1350,1404,2044"
+compte,n.vincent,compte à privilèges compromis (rafale d'échecs puis succès RDP),élevée,"ad_events.jsonl:L5651-5658, ad_events.jsonl:L5659.0"
+compte,svc_monitoring,compte de persistance créé de nuit et ajouté à « Admins du domaine »,élevée,"ad_events.jsonl:L5661,L5662.0"
+ip,10.10.200.41,IP interne absente de l'inventaire : balayage puis RDP vers les serveurs (lien avec l'IP externe SUPPOSÉ : concordance horaire),moyenne,firewall.csv:L32227-32266
+domaine,cloud-depot-securise.example,destination de l'exfiltration (jamais vue avant le transfert),élevée,proxy_web.csv:L25503-25642
+url,https://cloud-depot-securise.example/upload/chunk,"140 POST, 0.894 Go",élevée,proxy_web.csv:L25503-25642
+machine,PC-SIE-1000,accès réussi,élevée,"EDR : Page d'hameçonnage visitée, Exfiltration de données probable"
+machine,SRV-AD01,accès réussi,élevée,"AD : 4 évts réussis (4624, 4672, 4720, 4728), 9 échecs"
+machine,SRV-BACKUP01,accès réussi,élevée,"AD : 1 évts réussis (4624), 0 échecs | pare-feu : 3 flux RDP autorisés depuis le pivot"
+machine,SRV-FILE01,accès réussi,élevée,"AD : 1 évts réussis (4624), 1 échecs | pare-feu : 9 flux RDP autorisés depuis le pivot | EDR : Création de compte à privilèges hors procédure, Suppression de sauvegardes, Comportement de rançongiciel"
+machine,SRV-FILE02,accès réussi,élevée,"AD : 1 évts réussis (4624), 1 échecs | pare-feu : 7 flux RDP autorisés depuis le pivot"
+machine,SRV-ERP01,sondé,faible,"AD : 0 évts réussis (), 1 échecs"
+machine,SRV-PROXY01,sondé,faible,"AD : 0 évts réussis (), 1 échecs"
+machine,SRV-VPN01,sondé,faible,"AD : 0 évts réussis (), 1 échecs"

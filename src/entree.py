@@ -17,8 +17,8 @@ MARGE_SEUIL = 15      # un mail livre a moins de 15 points du seuil de blocage e
 MIN_MAILS_USUEL = 50  # un domaine expediteur « habituel » envoie au moins 50 mails
 
 
-def courriel_piege(d):
-    """Mails LIVRES cumulant des indices de piege (>= 2 indices)."""
+def courriel_piege(d, min_indices=2):
+    """Mails LIVRES cumulant des indices de piege (>= min_indices, 2 par defaut)."""
     ml = d["mail"].copy()
     # Le seuil de blocage n'est pas documente : on l'encadre par les donnees.
     max_livre = int(ml.loc[ml.verdict == "livre", "score_risque"].max())
@@ -41,7 +41,7 @@ def courriel_piege(d):
     livres["score_limite"] = livres.score_risque >= min_spam - MARGE_SEUIL
     livres["nb_indices"] = (livres.sosie_de.notna().astype(int) + livres.double_extension.astype(int)
                             + livres.avec_lien.astype(int) + livres.score_limite.astype(int))
-    suspects = livres[livres.nb_indices >= 2]
+    suspects = livres[livres.nb_indices >= min_indices]
     top = livres.nlargest(3, "score_risque")[["ligne", "score_risque", "expediteur"]]
     return suspects, {"max_livre": max_livre, "min_spam": min_spam, "top_scores_livres": top}
 
