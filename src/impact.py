@@ -80,7 +80,6 @@ def perimetre(d, ip_ext, flux_pivot):
         auth_confirmee=("auth_confirmee", "any"), niveau=("niveau", lambda s: " | ".join(sorted(set(s)))),
         preuves=("preuve", " | ".join),
         comptes=("comptes", lambda s: ", ".join(sorted({c for x in s for c in x.split(", ") if c})))).reset_index()
-    t["niveau"] = t.reussi.map({True: "accès réussi", False: "sondé"})
     # serveurs jamais vus dans l'analyse = non touchés (preuve négative)
     manquants = sorted(set(inv[inv.type == "serveur"].hostname) - set(t.machine))
     return t.sort_values(["auth_confirmee", "machine"], ascending=[False, True]).drop(columns="auth_confirmee"), manquants
