@@ -19,7 +19,7 @@ def analyser(d):
     }
     res["periode"] = (min(d[s].horodatage.min() for s in SOURCES),
                       max(d[s].horodatage.max() for s in SOURCES))
-    # Volumes journaliers : MEDIANE (robuste a l attaque) en semaine / week-end
+    # Les medianes portent sur toute la periode, incident compris : ce ne sont pas des baselines saines.
     lignes = []
     for s in SOURCES:
         # On compte les evenements par date, puis on separe les jours ouvrables et le week-end.
@@ -54,7 +54,7 @@ def main():
     for k, v in r["effectifs"].items():
         print(f"  {k:42} {v}")
     print(f"  periode : {r['periode'][0]:%Y-%m-%d %H:%M} -> {r['periode'][1]:%Y-%m-%d %H:%M} (heure de Paris)")
-    titre("Une journee normale : volumes (medianes) et part des evenements 8h-18h")
+    titre("Activité observée : médianes par jour et part des événements 8h-18h")
     montrer(r["volumes"])
     # Les derniers tableaux signalent les identifiants absents ou ambigus sans les exclure.
     titre("Cles absentes de l inventaire (a investiguer)")

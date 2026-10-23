@@ -6,7 +6,7 @@ Pour chaque règle on mesure, en rejouant les journaux :
   1. le nombre d'alertes sur 21 jours, dont combien sont rattachées à l'attaque ;
   2. l'heure du premier déclenchement utile, donc l'AVANCE sur l'exfiltration
      (19/09) et sur le chiffrement (20/09) ;
-  3. la marge sur le seuil : jusqu'où le durcir ou l'assouplir sans faux positif.
+    3. la sensibilite des seuils et les alertes non rattachees par l'heuristique.
 Chaque règle existe en variantes : « stricte » (celle des scripts), « large »
 (seuil assoupli, pour chasser d'autres compromissions) et « naïve » (règle
 simpliste, pour montrer pourquoi elle est inutilisable).
@@ -52,7 +52,7 @@ def contexte(d):
 
 
 def rattachee(alerte, ctx):
-    """Alerte liée à l'attaque : IP / domaine connu, ou compte compromis PENDANT l'attaque."""
+    """Rattachement heuristique par indicateur connu ou compte compromis pendant l'incident."""
     ac = set(alerte["acteurs"])
     if ac & (ctx["ips"] | ctx["domaines"]):
         return True
@@ -105,6 +105,7 @@ def r_proxy_nouvel_hote(d, avec_post=True, jours_ref=3, max_comptes=5):
 
 def r_proxy_volume(d, seuil_octets=50e6):
     """Octets envoyés par (compte, hôte) en une heure au-delà d'un seuil."""
+    # Les seuils sont cumules dans des heures calendaires, pas dans une fenetre glissante.
     p = d["proxy"].sort_values("horodatage").copy()
     p["h"] = p.horodatage.dt.floor("h")
     p["cumul"] = p.groupby(["login", "host", "h"]).octets_envoyes.cumsum()
@@ -121,7 +122,7 @@ def r_edr_ouverte(d, critique_seulement=True):
 
 
 def r_edr_nuit(d):
-    """Toute alerte EDR entre 22h et 6h (aucun faux positif observé la nuit)."""
+    """Toute alerte EDR entre 22h et 6h, quelle que soit sa gravite ou son statut."""
     e = d["edr"]
     e = e[(e.horodatage.dt.hour >= 22) | (e.horodatage.dt.hour < 6)]
     return _df([_a(r.horodatage, [r.utilisateur, r.machine], preuve("edr", r.id), f"{r.titre} ({r.gravite}, {r.statut})") for _, r in e.iterrows()])
@@ -129,24 +130,31 @@ def r_edr_nuit(d):
 
 def r_vpn_mfa(d, fenetre="5min"):
     """Échec « second facteur manquant » suivi d'un succès (même compte, même IP)."""
-    v, out = d["vpn"].sort_values("horodatage"), []
+    v, out, succes_vus = d["vpn"].sort_values("horodatage"), [], set()
     for _, e in v[v.motif == "second facteur manquant"].iterrows():
         ok = v[(v.login == e.login) & (v.ip_source == e.ip_source) & (v.resultat == "succes")
                & (v.horodatage > e.horodatage) & (v.horodatage <= e.horodatage + pd.Timedelta(fenetre))]
         if len(ok):
             x = ok.iloc[0]
-            out.append(_a(x.horodatage, [x.login, x.ip_source], preuve("vpn", x.ligne), "succès après échec du second facteur"))
+            # Plusieurs echecs peuvent precéder le meme succes : on ne l'alerte qu'une fois.
+            if x.ligne not in succes_vus:
+                succes_vus.add(x.ligne)
+                out.append(_a(x.horodatage, [x.login, x.ip_source], preuve("vpn", x.ligne), "succès après échec du second facteur"))
     return _df(out)
 
 
 def r_vpn_voyage(d, fenetre="10min"):
-    """Même compte vu dans deux pays différents à moins de 10 min : déplacement impossible."""
+    """Pays differents associes a la meme IP pour un compte dans la fenetre choisie."""
     out = []
     for u, g in d["vpn"].sort_values("horodatage").groupby("login"):
         g = g.reset_index(drop=True)
         for i in range(1, len(g)):
-            if g.pays[i] != g.pays[i - 1] and g.horodatage[i] - g.horodatage[i - 1] <= pd.Timedelta(fenetre):
-                out.append(_a(g.horodatage[i], [u, g.ip_source[i]], preuve("vpn", g.ligne[i]), f"{g.pays[i - 1]} → {g.pays[i]} en peu de temps"))
+            meme_ip = g.ip_source[i] == g.ip_source[i - 1]
+            pays_different = g.pays[i] != g.pays[i - 1]
+            dans_fenetre = g.horodatage[i] - g.horodatage[i - 1] <= pd.Timedelta(fenetre)
+            if meme_ip and pays_different and dans_fenetre:
+                detail = f"géolocalisations {g.pays[i - 1]} et {g.pays[i]} pour la même IP"
+                out.append(_a(g.horodatage[i], [u, g.ip_source[i]], preuve("vpn", g.ligne[i]), detail))
     return _df(out)
 
 
@@ -179,16 +187,21 @@ def r_ad_source(d, hors_inventaire=False):
 
 
 def r_ad_rafale(d, seuil=5, fenetre="10min", cumul=False):
-    """>= seuil échecs d'un compte en moins de `fenetre` d'écart ; en « cumul » : total sur 3 semaines."""
+    """>= seuil echecs dans une fenetre glissante ; en cumul : total par compte sur la periode."""
     f = d["ad"][d["ad"].event_id == 4625].sort_values("horodatage")
     out = []
     for cle, g in f.groupby("utilisateur" if cumul else ["utilisateur", "ip_source"]):
         g = g.reset_index(drop=True)
-        episodes = [g] if cumul else [e for _, e in g.groupby((g.horodatage.diff() > pd.Timedelta(fenetre)).cumsum())]
-        for e in episodes:
-            if len(e) >= seuil:
-                x = e.iloc[seuil - 1]
-                out.append(_a(x.horodatage, [x.utilisateur, x.ip_source], preuve("ad", x.ligne), f"{seuil}e échec ({len(e)} dans l'épisode)"))
+        if cumul:
+            if len(g) >= seuil:
+                x = g.iloc[seuil - 1]
+                out.append(_a(x.horodatage, [x.utilisateur, x.ip_source], preuve("ad", x.ligne), f"{seuil}e échec ({len(g)} sur la période)"))
+            continue
+        # Le helper retourne seulement le premier echec qui franchit le seuil par episode glissant.
+        for _, x in progression.franchissements_glissants(g, seuil, fenetre).iterrows():
+            debut = x.horodatage - pd.Timedelta(fenetre)
+            nb = int(((g.horodatage >= debut) & (g.horodatage <= x.horodatage)).sum())
+            out.append(_a(x.horodatage, [x.utilisateur, x.ip_source], preuve("ad", x.ligne), f"{seuil}e échec ({nb} dans la fenêtre)"))
     return _df(out)
 
 
@@ -198,11 +211,9 @@ def r_ad_sondage(d, seuil=3, fenetre="15min"):
     out = []
     for _, g in f.groupby(["utilisateur", "ip_source"]):
         g = g.reset_index(drop=True)
-        for _, e in g.groupby((g.horodatage.diff() > pd.Timedelta(fenetre)).cumsum()):
-            cum = (~e.machine_cible.duplicated()).astype(int).cumsum()
-            if cum.max() >= seuil:
-                x = e[cum >= seuil].iloc[0]
-                out.append(_a(x.horodatage, [x.utilisateur, x.ip_source], preuve("ad", x.ligne), f"refus sur {seuil} serveurs différents"))
+        # Une alerte part au premier refus qui atteint le nombre de serveurs distincts.
+        for _, x in progression.franchissements_serveurs_glissants(g, seuil, fenetre).iterrows():
+            out.append(_a(x.horodatage, [x.utilisateur, x.ip_source], preuve("ad", x.ligne), f"refus sur {seuil} serveurs distincts en {fenetre}"))
     return _df(out)
 
 
@@ -213,16 +224,19 @@ def r_ad_rdp(d):
 
 
 def r_ad_escalade(d, toute_creation=False):
-    """Privilèges spéciaux (4672) + création (4720) + ajout à un groupe (4728), même compte et source, en 1 h."""
+    """Creation puis ajout du meme compte a un groupe admin, avec privileges du meme acteur sous une heure."""
     ad, out = d["ad"].sort_values("horodatage"), []
     if toute_creation:
         for _, r in ad[ad.event_id == 4720].iterrows():
             out.append(_a(r.horodatage, [r.utilisateur, r.ip_source, r.compte_cree], preuve("ad", r.ligne), f"création de {r.compte_cree}"))
         return _df(out)
     for _, r in ad[ad.event_id == 4728].iterrows():
+        if not progression.est_groupe_admin(r.groupe):
+            continue
         h = ad[(ad.utilisateur == r.utilisateur) & (ad.ip_source == r.ip_source) & (ad.horodatage <= r.horodatage)
                & (ad.horodatage >= r.horodatage - pd.Timedelta("1h"))]
-        if {4672, 4720} <= set(h.event_id):
+        creation_compte = h[(h.event_id == 4720) & (h.compte_cree == r.compte_ajoute)]
+        if 4672 in set(h.event_id) and not creation_compte.empty:
             out.append(_a(r.horodatage, [r.utilisateur, r.ip_source, r.compte_ajoute], preuve("ad", r.ligne), f"{r.compte_ajoute} ajouté à {r.groupe}"))
     return _df(out)
 
@@ -265,7 +279,7 @@ REGLES = [
     ("R03", "Alerte EDR critique non close", "edr", "large", lambda d: r_edr_ouverte(d, False)),
     ("R04", "Alerte EDR nocturne (22h-6h)", "edr", "stricte", r_edr_nuit),
     ("R05", "VPN : succès après échec du 2e facteur", "vpn", "stricte", r_vpn_mfa),
-    ("R06", "VPN : déplacement impossible", "vpn", "stricte", r_vpn_voyage),
+    ("R06", "VPN : pays incohérents pour une même IP", "vpn", "stricte", r_vpn_voyage),
     ("R06", "VPN : pays inhabituel pour le compte", "vpn", "large", r_vpn_pays),
     ("R06", "VPN : IP jamais vue pour le compte", "vpn", "naïve", r_vpn_ip_nouvelle),
     ("R07", "AD : source hors parc (IP externe)", "ad", "stricte", lambda d: r_ad_source(d, False)),
@@ -308,8 +322,8 @@ def retro_test(d, ctx):
         tp = a[a.rattachee] if len(a) else a
         t0 = tp.horodatage.min() if len(tp) else pd.NaT
         sorti = tr[tr.horodatage <= t0].octets_envoyes.sum() / 1e6 if pd.notna(t0) else float("nan")
-        lignes.append({"code": code, "regle": nom, "variante": var, "alertes": len(a), "rattachees": len(tp),
-                       "faux_positifs": len(a) - len(tp), "premiere_alerte_utile": t0,
+        lignes.append({"code": code, "regle": nom, "variante": var, "alertes": len(a), "rattachees_heuristiques": len(tp),
+                   "non_rattachees": len(a) - len(tp), "premiere_alerte_utile": t0,
                        "avance_sur_exfiltration": (ref["exfiltration"] - t0) if pd.notna(t0) else pd.NaT,
                        "avance_sur_chiffrement": (ref["chiffrement"] - t0) if pd.notna(t0) else pd.NaT,
                        "Mo_deja_sortis": round(sorti, 0)})
@@ -317,7 +331,7 @@ def retro_test(d, ctx):
 
 
 def sensibilite(d, ctx):
-    """Fait varier le seuil des règles numériques : quelle plage détecte sans faux positif ?"""
+    """Fait varier les seuils et mesure les alertes non rattachees par la regle heuristique."""
     # Les grilles couvrent differents seuils pour quatre detections quantifiables.
     tr = ctx["transferts"]
     jeux = [("Rafale d'échecs AD (échecs en 10 min)", list(range(2, 11)), lambda k: r_ad_rafale(d, k)),
@@ -326,12 +340,12 @@ def sensibilite(d, ctx):
             ("Mail livré : score minimal", [20, 30, 40, 50, 55, 58, 59], lambda k: r_mail_score(d, k))]
     out = []
     for nom, seuils, f in jeux:
-        # Chaque seuil est rejoue et resume avec le nombre de faux positifs et la premiere alerte utile.
+        # Chaque seuil est rejoue avec le nombre d'alertes non rattachees par l'heuristique.
         for k in seuils:
             a = f(k)
             rat = [rattachee(r, ctx) for _, r in a.iterrows()] if len(a) else []
             t0 = a[rat].horodatage.min() if any(rat) else pd.NaT
-            out.append({"regle": nom, "seuil": k, "alertes": len(a), "faux_positifs": len(a) - sum(rat),
+            out.append({"regle": nom, "seuil": k, "alertes": len(a), "non_rattachees": len(a) - sum(rat),
                         "detectee": bool(any(rat)), "premiere_alerte_utile": t0,
                         "Mo_deja_sortis": round(tr[tr.horodatage <= t0].octets_envoyes.sum() / 1e6, 0) if pd.notna(t0) else float("nan")})
     return pd.DataFrame(out)
@@ -388,7 +402,7 @@ def presence(d, compte):
 
 
 def plage_sure(t):
-    ok = t[(t.faux_positifs == 0) & t.detectee]
+    ok = t[(t.non_rattachees == 0) & t.detectee]
     return ok.groupby("regle").seuil.agg(["min", "max"]) if len(ok) else pd.DataFrame()
 
 
@@ -418,12 +432,12 @@ def main():
     print("\nLecture : « avance » = délai entre la 1re alerte utile et l'exfiltration (19/09 03:37) / le chiffrement (20/09 05:25) ;")
     print("négatif = l'alerte arrive APRÈS le début. Mo_deja_sortis = volume parti avant l'alerte.")
 
-    titre("2. Marge des seuils : plage sans faux positif qui détecte encore l'attaque")
+    titre("2. Sensibilité des seuils : alertes non rattachees")
     t = sens.copy()
     t["premiere_alerte_utile"] = t.premiere_alerte_utile.map(lambda x: "-" if pd.isna(x) else f"{x:%d/%m %H:%M:%S}")
     montrer(t)
     print()
-    montrer(plage_sure(sens).reset_index().rename(columns={"min": "seuil_min_sans_FP", "max": "seuil_max_qui_detecte"}))
+    montrer(plage_sure(sens).reset_index().rename(columns={"min": "seuil_min_sans_non_rattachee", "max": "seuil_max_qui_detecte"}))
 
     titre("3. Chasse : alertes des variantes stricte/large NON rattachées à l'attaque (pistes à qualifier)")
     if p.empty:

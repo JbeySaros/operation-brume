@@ -50,35 +50,40 @@ def alertes_edr(d):
 def perimetre(d, ip_ext, flux_pivot):
     """Une ligne par machine touchée, avec un niveau de certitude et la source qui le prouve.
 
-    « accès réussi » = connexion/action réussie dans l'AD depuis l'IP de l'attaquant,
-                       OU flux RDP autorisé du pivot (hors balayage), OU alerte EDR ouverte.
-    « sondé »        = seulement des refus / le balayage (aucune preuve d'accès).
+    Une authentification AD réussie est confirmee par un evenement 4624.
+    Un flux pare-feu autorise ou une alerte EDR est rapporte separement, sans conclure a une session.
+    Des refus AD seuls indiquent une tentative, sans authentification reussie observee.
     """
     ad, inv = d["ad"], d["inventaire"]
     lignes = []
     a = ad[ad.ip_source == ip_ext]
     # Les evenements AD depuis l'IP externe sont distingues selon leur code de succes ou d'echec.
     for m, g in a.groupby("machine_cible"):
-        reussi = g[g.event_id != 4625]
-        lignes.append({"machine": m, "reussi": len(reussi) > 0,
-                       "preuve": f"AD : {len(reussi)} évts réussis ({', '.join(map(str, sorted(reussi.event_id.unique())))}), {len(g) - len(reussi)} échecs",
+        auth = g[g.event_id == 4624]
+        hors_echec = g[g.event_id != 4625]
+        niveau = "authentification AD réussie" if len(auth) else "évènements AD sans 4624"
+        lignes.append({"machine": m, "auth_confirmee": len(auth) > 0, "niveau": niveau,
+                       "preuve": f"AD : {len(auth)} authentifications réussies, {len(g) - len(auth)} autres évènements ({', '.join(map(str, sorted(hors_echec.event_id.unique())))} hors échecs)",
                        "comptes": ", ".join(sorted(g.utilisateur.unique()))})
     if flux_pivot is not None:
         rdp = flux_pivot[(flux_pivot.action == "autorise") & (flux_pivot.port_dest == 3389)]
         for m, g in rdp.groupby("serveur"):
-            lignes.append({"machine": m, "reussi": True, "preuve": f"pare-feu : {len(g)} flux RDP autorisés depuis le pivot", "comptes": ""})
+            lignes.append({"machine": m, "auth_confirmee": False, "niveau": "flux RDP autorisé (session non confirmée)",
+                           "preuve": f"pare-feu : {len(g)} flux RDP autorisés depuis le pivot", "comptes": ""})
     # Les alertes EDR ouvertes sont rattachees aux machines qu'elles nomment.
     for m, g in d["edr"][d["edr"].statut == "ouvert"].groupby("machine"):
-        lignes.append({"machine": m, "reussi": True, "preuve": f"EDR : {', '.join(g.titre)}", "comptes": ", ".join(sorted(g.utilisateur.unique()))})
+        lignes.append({"machine": m, "auth_confirmee": False, "niveau": "alerte EDR (accès non confirmé)",
+                       "preuve": f"EDR : {', '.join(g.titre)}", "comptes": ", ".join(sorted(g.utilisateur.unique()))})
     toutes = pd.DataFrame(lignes)
     # Les lignes provenant de plusieurs sources sont reunies en un niveau et des preuves cumulees.
     t = toutes.groupby("machine").agg(
-        reussi=("reussi", "any"), preuves=("preuve", " | ".join),
+        auth_confirmee=("auth_confirmee", "any"), niveau=("niveau", lambda s: " | ".join(sorted(set(s)))),
+        preuves=("preuve", " | ".join),
         comptes=("comptes", lambda s: ", ".join(sorted({c for x in s for c in x.split(", ") if c})))).reset_index()
     t["niveau"] = t.reussi.map({True: "accès réussi", False: "sondé"})
     # serveurs jamais vus dans l'analyse = non touchés (preuve négative)
     manquants = sorted(set(inv[inv.type == "serveur"].hostname) - set(t.machine))
-    return t.sort_values(["reussi", "machine"], ascending=[False, True]).drop(columns="reussi"), manquants
+    return t.sort_values(["auth_confirmee", "machine"], ascending=[False, True]).drop(columns="auth_confirmee"), manquants
 
 
 def analyser(d, ip_ext=None, flux_pivot=None):

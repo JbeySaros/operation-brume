@@ -14,17 +14,62 @@ SEUIL_ECHECS, FENETRE_ECHECS = 5, pd.Timedelta("10min")   # >= 5 échecs à moin
 SEUIL_COUPLES, FENETRE_SCAN = 10, "1min"                  # >= 10 couples (serveur, port) en 1 min
 
 
+def franchissements_glissants(g, seuil, fenetre):
+    """Retourne les premieres lignes qui atteignent le seuil dans une fenetre glissante."""
+    if g.empty:
+        return g
+    duree = pd.Timedelta(fenetre)
+    temps = g.horodatage.tolist()
+    debut, alerte_active, indices = 0, False, []
+    for fin, horodatage in enumerate(temps):
+        while horodatage - temps[debut] > duree:
+            debut += 1
+        atteint = fin - debut + 1 >= seuil
+        if atteint and not alerte_active:
+            indices.append(fin)
+        alerte_active = atteint
+    return g.iloc[indices]
+
+
+def est_groupe_admin(groupe):
+    """Reconnaît les groupes dont le nom indique un rôle d'administration."""
+    return isinstance(groupe, str) and any(mot in groupe.casefold() for mot in ("admin", "administrateur"))
+
+
+def franchissements_serveurs_glissants(g, seuil, fenetre):
+    """Retourne le premier evenement atteignant le nombre de serveurs dans la fenetre."""
+    if g.empty:
+        return g
+    duree = pd.Timedelta(fenetre)
+    temps = g.horodatage.tolist()
+    serveurs = g.machine_cible.tolist()
+    debut, alert_active, comptes, indices = 0, False, {}, []
+    for fin, horodatage in enumerate(temps):
+        serveur = serveurs[fin]
+        comptes[serveur] = comptes.get(serveur, 0) + 1
+        while horodatage - temps[debut] > duree:
+            ancien = serveurs[debut]
+            comptes[ancien] -= 1
+            if comptes[ancien] == 0:
+                del comptes[ancien]
+            debut += 1
+        atteint = len(comptes) >= seuil
+        if atteint and not alert_active:
+            indices.append(fin)
+        alert_active = atteint
+    return g.iloc[indices]
+
+
 def rafales_echecs(d):
     """Épisodes de >= 5 échecs (4625) d'un même couple (compte, source), puis ce qui suit."""
     ad = d["ad"].sort_values("horodatage")
     sorties = []
     for (u, src), g in ad[ad.event_id == 4625].groupby(["utilisateur", "ip_source"]):
-        # un « épisode » = suite d'échecs séparés de moins de 10 min
-        g = g.assign(episode=(g.horodatage.diff() > FENETRE_ECHECS).cumsum())
-        for _, e in g.groupby("episode"):
-            if len(e) < SEUIL_ECHECS:
-                continue
-            fin = e.horodatage.max()
+        g = g.reset_index(drop=True)
+        # Une alerte part au premier franchissement de cinq échecs dans toute fenêtre de dix minutes.
+        for _, declenchement in franchissements_glissants(g, SEUIL_ECHECS, FENETRE_ECHECS).iterrows():
+            fin = declenchement.horodatage
+            e = g[(g.horodatage >= fin - FENETRE_ECHECS) & (g.horodatage <= fin)]
             suite = ad[(ad.utilisateur == u) & (ad.ip_source == src) & (ad.horodatage > fin)
                        & (ad.horodatage <= fin + pd.Timedelta("1h"))]
             ok = suite[suite.event_id == 4624].head(1)
@@ -70,9 +115,14 @@ def comptes_crees(d):
     ajouts = ad[ad.event_id == 4728]
     lignes = []
     for _, c in ad[ad.event_id == 4720].iterrows():
-        a = ajouts[ajouts.compte_ajoute == c.compte_cree]
-        co = ad[(ad.utilisateur == c.compte_cree) & (ad.event_id == 4624)]
         h = c.horodatage
+        # L'ajout doit viser le compte cree, venir du meme acteur et de la meme source sous une heure.
+        a = ajouts[(ajouts.compte_ajoute == c.compte_cree) & (ajouts.utilisateur == c.utilisateur)
+                   & (ajouts.ip_source == c.ip_source) & (ajouts.horodatage >= h)
+                   & (ajouts.horodatage <= h + pd.Timedelta("1h"))
+                   & ajouts.groupe.map(est_groupe_admin)]
+        # Seules les authentifications du compte apres sa creation sont comptees.
+        co = ad[(ad.utilisateur == c.compte_cree) & (ad.event_id == 4624) & (ad.horodatage > h)]
         r = {"ligne": c.ligne, "horodatage": h, "compte": c.compte_cree, "cree_par": c.utilisateur, "depuis": c.ip_source,
              "nuit(22h-6h)": h.hour >= 22 or h.hour < 6, "week-end": h.dayofweek >= 5,
              "source_externe": not est_interne(c.ip_source),
@@ -130,7 +180,7 @@ def analyser(d, ip_ext=None):
     if len(scans):
         ip_p = scans.iloc[0].ip_source
         piv = activite_pivot(d, ip_p)
-        scan_fin = piv.horodatage.iloc[0].floor(FENETRE_SCAN) + pd.Timedelta("1min")
+        scan_fin = scans.iloc[0].fenetre + pd.Timedelta(FENETRE_SCAN)
         apres = piv[piv.horodatage >= scan_fin]
         res.update(ip_pivot=ip_p, pivot_apres_scan=apres)
         for _, f in apres.iterrows():

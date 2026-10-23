@@ -42,9 +42,9 @@ def indicateurs(e, p, i):
     add("ip", e["ip_attaquant"], "IP externe de l'attaquant (VPN + AD) ; 4 pays déclarés pour une seule IP", "élevée", "vpn_auth.csv:L" + ",".join(map(str, e["vpn_ip"].ligne)))
     for _, r in p["rafales"].iterrows():
         if pd.notna(r.succes_ensuite):
-            add("compte", r.utilisateur, "compte à privilèges compromis (rafale d'échecs puis succès RDP)", "élevée", r.lignes_echecs + f", ad_events.jsonl:L{r.ligne_succes}")
+            add("compte", r.utilisateur, "compte avec rafale d'échecs suivie d'une authentification réussie", "élevée", r.lignes_echecs + f", ad_events.jsonl:L{int(r.ligne_succes)}")
     for _, c in p["creations"][p["creations"].suspect].iterrows():
-        add("compte", c.compte, "compte de persistance créé de nuit et ajouté à « " + str(c.groupe_admin) + " »", "élevée", f"ad_events.jsonl:L{c.ligne},L{c.ligne_ajout}")
+        add("compte", c.compte, "compte de persistance créé de nuit et ajouté à « " + str(c.groupe_admin) + " »", "élevée", f"ad_events.jsonl:L{int(c.ligne)},L{int(c.ligne_ajout)}")
     # L'IP du pivot est explicitement marquee comme lien suppose avec l'IP externe.
     if "ip_pivot" in p:
         add("ip", p["ip_pivot"], "IP interne absente de l'inventaire : balayage puis RDP vers les serveurs (lien avec l'IP externe SUPPOSÉ : concordance horaire)", "moyenne", "firewall.csv:L" + str(p["scans"].iloc[0].premiere) + "-" + str(p["scans"].iloc[0].derniere))
@@ -53,7 +53,8 @@ def indicateurs(e, p, i):
         add("domaine", t.host, "destination de l'exfiltration (jamais vue avant le transfert)", "élevée", f"proxy_web.csv:L{t.premiere}-{t.derniere}")
         add("url", f"https://{t.host}{t.url}", f"{int(t.requetes)} POST, {t.octets / 1e9:.3f} Go", "élevée", f"proxy_web.csv:L{t.premiere}-{t.derniere}")
     for _, r in i.get("perimetre", pd.DataFrame()).iterrows():
-        add("machine", r.machine, r.niveau, "élevée" if r.niveau == "accès réussi" else "faible", r.preuves)
+        confiance = "élevée" if "authentification AD réussie" in r.niveau else "moyenne"
+        add("machine", r.machine, r.niveau, confiance, r.preuves)
     return pd.DataFrame(lignes)
 
 
