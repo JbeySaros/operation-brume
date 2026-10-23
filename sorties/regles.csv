@@ -1,4 +1,4 @@
-code,regle,variante,alertes,rattachees,faux_positifs,premiere_alerte_utile,avance_sur_exfiltration,avance_sur_chiffrement,Mo_deja_sortis
+code,regle,variante,alertes,rattachees_heuristiques,non_rattachees,premiere_alerte_utile,avance_sur_exfiltration,avance_sur_chiffrement,Mo_deja_sortis
 R01,Courriel piégé livré,stricte,1,1,0,2026-09-11 10:48:00+0200,7 j 16 h 49 min,8 j 18 h 37 min,0.0
 R01,Courriel piégé livré,large,1,1,0,2026-09-11 10:48:00+0200,7 j 16 h 49 min,8 j 18 h 37 min,0.0
 R01,Courriel piégé livré,naïve,59,1,58,2026-09-11 10:48:00+0200,7 j 16 h 49 min,8 j 18 h 37 min,0.0
@@ -7,8 +7,8 @@ R02,Hôte web nouveau + formulaire,large,2,2,0,2026-09-11 11:14:00+0200,7 j 16 h
 R03,Alerte EDR critique non close,stricte,4,4,0,2026-09-14 02:57:00+0200,5 j 0 h 40 min,6 j 2 h 28 min,0.0
 R03,Alerte EDR critique non close,large,5,5,0,2026-09-11 11:20:00+0200,7 j 16 h 17 min,8 j 18 h 05 min,0.0
 R04,Alerte EDR nocturne (22h-6h),stricte,4,4,0,2026-09-14 02:57:00+0200,5 j 0 h 40 min,6 j 2 h 28 min,0.0
-R05,VPN : succès après échec du 2e facteur,stricte,2,2,0,2026-09-11 23:17:00+0200,7 j 4 h 20 min,8 j 6 h 08 min,0.0
-R06,VPN : déplacement impossible,stricte,2,2,0,2026-09-11 23:15:00+0200,7 j 4 h 22 min,8 j 6 h 10 min,0.0
+R05,VPN : succès après échec du 2e facteur,stricte,1,1,0,2026-09-11 23:17:00+0200,7 j 4 h 20 min,8 j 6 h 08 min,0.0
+R06,VPN : pays incohérents pour une même IP,stricte,2,2,0,2026-09-11 23:15:00+0200,7 j 4 h 22 min,8 j 6 h 10 min,0.0
 R06,VPN : pays inhabituel pour le compte,large,6,6,0,2026-09-11 23:14:00+0200,7 j 4 h 23 min,8 j 6 h 11 min,0.0
 R06,VPN : IP jamais vue pour le compte,naïve,1843,16,1827,2026-09-11 11:57:46+0200,7 j 15 h 39 min,8 j 17 h 27 min,0.0
 R07,AD : source hors parc (IP externe),stricte,21,21,0,2026-09-12 00:58:00+0200,7 j 2 h 39 min,8 j 4 h 27 min,0.0

@@ -1,4 +1,4 @@
-regle,seuil,alertes,faux_positifs,detectee,premiere_alerte_utile,Mo_deja_sortis
+regle,seuil,alertes,non_rattachees,detectee,premiere_alerte_utile,Mo_deja_sortis
 Rafale d'échecs AD (échecs en 10 min),2.0,2,0,True,2026-09-12 01:00:00+0200,0.0
 Rafale d'échecs AD (échecs en 10 min),3.0,2,0,True,2026-09-12 01:02:00+0200,0.0
 Rafale d'échecs AD (échecs en 10 min),4.0,2,0,True,2026-09-12 01:04:00+0200,0.0
