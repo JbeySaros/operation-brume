@@ -14,9 +14,11 @@ def exfiltration(d):
     """Requêtes dont le volume ENVOYÉ est hors norme, regroupées par destination."""
     p = d["proxy"]
     p99 = p.octets_envoyes.quantile(0.99)
+    # Seules les requetes tres au-dessus de ce niveau servent de transferts candidats.
     gros = p[p.octets_envoyes > FACTEUR_ENVOI * p99]
     if gros.empty:
         return gros, None, p99
+    # Le regroupement distingue compte, source, destination, chemin et methode HTTP.
     g = gros.groupby(["login", "ip_source", "host", "url", "methode"]).agg(
         requetes=("ligne", "size"), debut=("horodatage", "min"), fin=("horodatage", "max"),
         octets=("octets_envoyes", "sum"), min_requete=("octets_envoyes", "min"),
@@ -24,6 +26,7 @@ def exfiltration(d):
         statuts=("statut", lambda s: sorted(s.unique()))).reset_index()
     # première apparition de l'hôte dans tout le journal : un hôte jamais vu avant est un indice
     g["premier_passage_hote"] = g.host.map(p.groupby("host").horodatage.min())
+    # Ces colonnes replacent chaque transfert candidat dans l'historique global de son hote.
     g["requetes_totales_hote"] = g.host.map(p.groupby("host").size())
     return gros, g, p99
 
@@ -54,6 +57,7 @@ def perimetre(d, ip_ext, flux_pivot):
     ad, inv = d["ad"], d["inventaire"]
     lignes = []
     a = ad[ad.ip_source == ip_ext]
+    # Les evenements AD depuis l'IP externe sont distingues selon leur code de succes ou d'echec.
     for m, g in a.groupby("machine_cible"):
         reussi = g[g.event_id != 4625]
         lignes.append({"machine": m, "reussi": len(reussi) > 0,
@@ -63,9 +67,11 @@ def perimetre(d, ip_ext, flux_pivot):
         rdp = flux_pivot[(flux_pivot.action == "autorise") & (flux_pivot.port_dest == 3389)]
         for m, g in rdp.groupby("serveur"):
             lignes.append({"machine": m, "reussi": True, "preuve": f"pare-feu : {len(g)} flux RDP autorisés depuis le pivot", "comptes": ""})
+    # Les alertes EDR ouvertes sont rattachees aux machines qu'elles nomment.
     for m, g in d["edr"][d["edr"].statut == "ouvert"].groupby("machine"):
         lignes.append({"machine": m, "reussi": True, "preuve": f"EDR : {', '.join(g.titre)}", "comptes": ", ".join(sorted(g.utilisateur.unique()))})
     toutes = pd.DataFrame(lignes)
+    # Les lignes provenant de plusieurs sources sont reunies en un niveau et des preuves cumulees.
     t = toutes.groupby("machine").agg(
         reussi=("reussi", "any"), preuves=("preuve", " | ".join),
         comptes=("comptes", lambda s: ", ".join(sorted({c for x in s for c in x.split(", ") if c})))).reset_index()
@@ -79,6 +85,7 @@ def analyser(d, ip_ext=None, flux_pivot=None):
     res, evts = {}, []
     gros, g, p99 = exfiltration(d)
     ouvertes, stats = alertes_edr(d)
+    # Les resultats detailles sont conserves pour les IOC et le rapport de sortie.
     res.update(p99_envoi=p99, transferts=g, alertes_ouvertes=ouvertes, stats_edr=stats)
     if g is not None:
         for _, x in g.iterrows():
@@ -89,6 +96,7 @@ def analyser(d, ip_ext=None, flux_pivot=None):
         res["octets_exfiltres"] = int(g.octets.sum())
     phases = {"Page d'hameçonnage visitée": "1 Accès initial", "Création de compte à privilèges hors procédure": "4 Privilèges et persistance",
               "Exfiltration de données probable": "5 Exfiltration", "Suppression de sauvegardes": "6 Sabotage", "Comportement de rançongiciel": "6 Sabotage"}
+    # Les alertes deja ajoutees par entree.py sont exclues pour eviter un doublon dans la frise.
     for _, a in ouvertes.iterrows():
         if a.titre == "Page d'hameçonnage visitée":
             continue  # déjà dans la frise via entree.py
@@ -102,6 +110,7 @@ def analyser(d, ip_ext=None, flux_pivot=None):
 def main():
     d = charger(lire_args(__doc__).donnees)
     import entree, progression
+    # Les analyses precedentes fournissent les adresses necessaires pour attribuer l'impact.
     e, _ = entree.analyser(d)
     p, _ = progression.analyser(d, e.get("ip_attaquant"))
     r, _ = analyser(d, e.get("ip_attaquant"), p.get("pivot_apres_scan"))

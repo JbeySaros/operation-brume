@@ -19,9 +19,11 @@ from chargement import charger, montrer, preuve, titre
 
 
 def construire(d):
+    # Chaque module produit ses evenements et ses resultats d'analyse independamment.
     e, ev1 = entree.analyser(d)
     p, ev2 = progression.analyser(d, e.get("ip_attaquant"))
     i, ev3 = impact.analyser(d, e.get("ip_attaquant"), p.get("pivot_apres_scan"))
+    # La concatenation rassemble les phases ; le tri stable preserve l'ordre initial en cas d'egalite.
     frise = pd.DataFrame(ev1 + ev2 + ev3).sort_values("horodatage", kind="stable").reset_index(drop=True)
     frise["horodatage"] = frise.horodatage.dt.strftime("%Y-%m-%d %H:%M:%S%z")
     return frise, e, p, i
@@ -31,6 +33,7 @@ def indicateurs(e, p, i):
     m, lignes = e["mail"], []
     def add(type_, valeur, role, confiance, pr):
         lignes.append({"type": type_, "valeur": valeur, "role": role, "confiance": confiance, "preuve": pr})
+    # Les premiers IOC decrivent l'hameconnage, le compte vise et les sources VPN associees.
     add("courriel", m.expediteur, "expéditeur du courriel piégé (domaine sosie de " + str(m.sosie_de) + ")", "élevée", preuve("mail", m.ligne))
     add("fichier", m.piece_jointe, "pièce jointe à double extension", "élevée", preuve("mail", m.ligne))
     add("url", m.lien, "page d'hameçonnage", "élevée", preuve("mail", m.ligne))
@@ -42,6 +45,7 @@ def indicateurs(e, p, i):
             add("compte", r.utilisateur, "compte à privilèges compromis (rafale d'échecs puis succès RDP)", "élevée", r.lignes_echecs + f", ad_events.jsonl:L{r.ligne_succes}")
     for _, c in p["creations"][p["creations"].suspect].iterrows():
         add("compte", c.compte, "compte de persistance créé de nuit et ajouté à « " + str(c.groupe_admin) + " »", "élevée", f"ad_events.jsonl:L{c.ligne},L{c.ligne_ajout}")
+    # L'IP du pivot est explicitement marquee comme lien suppose avec l'IP externe.
     if "ip_pivot" in p:
         add("ip", p["ip_pivot"], "IP interne absente de l'inventaire : balayage puis RDP vers les serveurs (lien avec l'IP externe SUPPOSÉ : concordance horaire)", "moyenne", "firewall.csv:L" + str(p["scans"].iloc[0].premiere) + "-" + str(p["scans"].iloc[0].derniere))
     if i["transferts"] is not None:
@@ -59,11 +63,13 @@ def main():
     ap.add_argument("--sorties", type=Path, default=Path("sorties"))
     a = ap.parse_args()
     d = charger(a.donnees)
+    # Les analyses partagees evitent de recalculer des resultats differents pour les deux exports.
     frise, e, p, i = construire(d)
     ioc = indicateurs(e, p, i)
     a.sorties.mkdir(exist_ok=True)
     frise.to_csv(a.sorties / "chronologie.csv", index=False, encoding="utf-8")
     ioc.to_csv(a.sorties / "ioc.csv", index=False, encoding="utf-8")
+    # La suite affiche les exports pour rendre la synthese consultable sans ouvrir les CSV.
     titre(f"Chronologie ({len(frise)} évènements) → {a.sorties / 'chronologie.csv'}")
     pd.set_option("display.max_colwidth", 120)
     for _, r in frise.iterrows():

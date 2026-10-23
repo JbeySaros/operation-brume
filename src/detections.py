@@ -31,6 +31,7 @@ COLONNES = ["horodatage", "acteurs", "preuve", "detail"]
 # Contexte : ce que l'on sait de l'attaque (dérivé des analyses, rien en dur)
 # --------------------------------------------------------------------------- #
 def contexte(d):
+    # Les analyses precedentes fournissent les comptes, adresses et destinations de reference.
     e, _ = entree.analyser(d)
     p, _ = progression.analyser(d, e.get("ip_attaquant"))
     i, _ = impact.analyser(d, e.get("ip_attaquant"), p.get("pivot_apres_scan"))
@@ -65,6 +66,7 @@ def _a(ts, acteurs, preuve_txt, detail):
 
 
 def _df(lignes):
+    # Le tri commun garantit un format stable meme lorsqu'une regle ne declenche aucune alerte.
     return pd.DataFrame(lignes, columns=COLONNES).sort_values("horodatage").reset_index(drop=True) if lignes \
         else pd.DataFrame(columns=COLONNES)
 
@@ -81,6 +83,7 @@ def r_mail_indices(d, min_indices=2):
 
 def r_mail_score(d, seuil=30):
     """Naïve : tout mail livré dont le score atteint un seuil."""
+    # Variante naive : un seuil de score seul sert a mesurer le bruit des courriels livres.
     m = d["mail"]
     m = m[(m.verdict == "livre") & (m.score_risque >= seuil)]
     return _df([_a(r.horodatage, [r.destinataire.split("@")[0], r.expediteur.split("@")[1]],
@@ -252,6 +255,7 @@ def r_fw_hors_inventaire(d):
 
 # Catalogue : (code, nom, source, variante, fonction)
 REGLES = [
+    # Chaque entree associe une famille, une variante et une fonction qui produit ses alertes.
     ("R01", "Courriel piégé livré", "mail", "stricte", lambda d: r_mail_indices(d, 2)),
     ("R01", "Courriel piégé livré", "mail", "large", lambda d: r_mail_indices(d, 1)),
     ("R01", "Courriel piégé livré", "mail", "naïve", lambda d: r_mail_score(d, 30)),
@@ -314,6 +318,7 @@ def retro_test(d, ctx):
 
 def sensibilite(d, ctx):
     """Fait varier le seuil des règles numériques : quelle plage détecte sans faux positif ?"""
+    # Les grilles couvrent differents seuils pour quatre detections quantifiables.
     tr = ctx["transferts"]
     jeux = [("Rafale d'échecs AD (échecs en 10 min)", list(range(2, 11)), lambda k: r_ad_rafale(d, k)),
             ("Balayage pare-feu (couples serveur:port/min)", [3, 4, 5, 6, 8, 10, 15, 20, 30, 40], lambda k: r_fw_balayage(d, k)),
@@ -321,6 +326,7 @@ def sensibilite(d, ctx):
             ("Mail livré : score minimal", [20, 30, 40, 50, 55, 58, 59], lambda k: r_mail_score(d, k))]
     out = []
     for nom, seuils, f in jeux:
+        # Chaque seuil est rejoue et resume avec le nombre de faux positifs et la premiere alerte utile.
         for k in seuils:
             a = f(k)
             rat = [rattachee(r, ctx) for _, r in a.iterrows()] if len(a) else []
@@ -333,6 +339,7 @@ def sensibilite(d, ctx):
 
 def pistes(alertes):
     """Alertes NON rattachées des variantes stricte/large, regroupées par acteurs : pistes à qualifier."""
+    # Les variantes naives sont exclues car leur bruit ne constitue pas une piste exploitable.
     lignes = []
     for (code, var), a in alertes.items():
         if var == "naïve" or not len(a):

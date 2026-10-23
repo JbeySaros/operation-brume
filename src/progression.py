@@ -85,9 +85,11 @@ def comptes_crees(d):
 
 def couverture_vpn(d, ip_ext, ip_pivot):
     """Part de l'activité de l'attaquant (AD + pare-feu) qui tombe dans une session VPN journalisée."""
+    # Les sessions reussies forment des intervalles temporels associes a l'IP externe.
     v = d["vpn"][(d["vpn"].ip_source == ip_ext) & (d["vpn"].resultat == "succes")].copy()
     v["fin"] = v.horodatage + pd.to_timedelta(v.duree_min, unit="m")
     def dans(t):
+        # Une activite est couverte si son heure tombe dans au moins un de ces intervalles.
         return bool(((v.horodatage <= t) & (v.fin >= t)).any())
     ad = d["ad"][d["ad"].ip_source == ip_ext]
     fw = d["firewall"][d["firewall"].ip_source == ip_pivot]
@@ -97,6 +99,7 @@ def couverture_vpn(d, ip_ext, ip_pivot):
 
 
 def analyser(d, ip_ext=None):
+    # Les signaux sont d'abord calcules par famille, puis transformes en evenements de frise.
     res, evts = {}, []
     rafales = rafales_echecs(d)
     scans, normal_max, taux_base = balayages(d)
@@ -104,6 +107,7 @@ def analyser(d, ip_ext=None):
     res.update(rafales=rafales, scans=scans, scan_normal_max=normal_max, taux_blocage_base=taux_base, creations=creations)
     ad = d["ad"]
 
+    # Une rafale est datee a son premier echec ; son succes ulterieur est ajoute comme evenement distinct.
     for _, r in rafales.iterrows():
         evts.append(evenement(r.debut, "3 Progression", r.lignes_echecs,
             f"{r.nb_echecs} échecs d'authentification sur {r.utilisateur} depuis {r.source} ({r.motif}) sur {r.serveurs}"))
@@ -115,7 +119,7 @@ def analyser(d, ip_ext=None):
                        4720: f"Création du compte {s.compte_cree} par {s.utilisateur}",
                        4728: f"{s.compte_ajoute} ajouté au groupe « {s.groupe} » par {s.utilisateur}"}.get(s.event_id, s.event)
                 evts.append(evenement(s.horodatage, "4 Privilèges et persistance", preuve("ad", s.ligne), txt))
-    # Balayage interne
+    # Chaque fenetre suspecte est detaillee avec ses flux, son taux de blocage et ses ports.
     for _, s in scans.iterrows():
         fw = d["firewall"]
         flux = fw[(fw.ip_source == s.ip_source) & (fw.horodatage.dt.floor(FENETRE_SCAN) == s.fenetre)]
@@ -132,7 +136,7 @@ def analyser(d, ip_ext=None):
         for _, f in apres.iterrows():
             evts.append(evenement(f.horodatage, "3 Progression", preuve("firewall", f.ligne),
                                   f"Flux {f.action.upper()} {ip_p} → {f.serveur} ({f.ip_dest}) port {f.port_dest} (bureau à distance)"))
-    # Persistance
+    # Le compte suspect est suivi dans les connexions AD reussies ulterieures.
     res["connexions_persistance"] = pd.DataFrame()
     if len(creations[creations.suspect]):
         compte = creations[creations.suspect].iloc[0].compte
@@ -141,19 +145,22 @@ def analyser(d, ip_ext=None):
         for _, x in co.iterrows():
             evts.append(evenement(x.horodatage, "4 Privilèges et persistance", preuve("ad", x.ligne),
                                   f"Connexion de {compte} sur {x.machine_cible} depuis {x.ip_source} (type {int(x.type_connexion)})"))
-    # Cohérence VPN / AD / pare-feu : l'IP externe = source non interne d'une rafale
+    # A defaut d'IP fournie, la premiere source non interne d'une rafale sert de candidat externe.
     if ip_ext is None:
         externes = rafales[~rafales.source.map(est_interne)] if len(rafales) else rafales
         ip_ext = externes.source.iloc[0] if len(externes) else None
     res["ip_externe"] = ip_ext
+    # La comparaison VPN est lancee seulement si l'IP externe et le pivot sont connus.
     if ip_ext and "ip_pivot" in res:
         res["couv_ad"], res["couv_fw"] = couverture_vpn(d, ip_ext, res["ip_pivot"])
     return res, evts
 
 
 def main():
+    # Le rapport console rassemble les detections et les pistes de corroboration de chaque etape.
     d = charger(lire_args(__doc__).donnees)
     r, _ = analyser(d)
+    # Le premier bloc detaille les episodes d'echecs et les evenements AD qui les suivent.
     titre(f"3a. Rafales d'échecs d'authentification (>= {SEUIL_ECHECS} échecs, écart < 10 min)")
     montrer(r["rafales"], ["utilisateur", "source", "debut", "fin", "nb_echecs", "motif", "serveurs", "lignes_echecs", "succes_ensuite", "type_connexion"])
     print("\nSuite immédiate dans l'AD (même compte, même source, dans l'heure) :")
@@ -162,12 +169,14 @@ def main():
             montrer(x.suite_ad, ["ligne", "horodatage", "event_id", "event", "utilisateur", "compte_cree", "compte_ajoute", "groupe"])
         else:
             print(f"  {x.utilisateur} : aucun événement ultérieur depuis {x.source} (échecs = « accès refusé » : le mot de passe était valable)")
+    # Le deuxieme bloc compare le balayage detecte au maximum observe sous le seuil.
     titre("3b. Balayage interne : >= 10 couples (serveur, port) dans la même minute")
     print(f"Maximum « normal » observé : {r['scan_normal_max']} couples/minute/source ; blocage de référence : {r['taux_blocage_base']:.1f} %")
     montrer(r["scans"], ["ip_source", "fenetre", "couples", "flux", "taux_blocage_%", "ports", "dans_inventaire", "premiere", "derniere"])
     if "pivot_apres_scan" in r:
         print(f"\nActivité ultérieure de {r['ip_pivot']} (hors balayage) : {len(r['pivot_apres_scan'])} flux, tous vers :")
         print(r["pivot_apres_scan"].groupby(["serveur", "port_dest", "action"]).size().to_string())
+    # Le troisieme bloc classe les creations selon le groupe obtenu, l'horaire et la source.
     titre("3c. Créations de comptes : suspect = ajouté à un groupe admin ET (nuit OU source externe)")
     montrer(r["creations"], ["ligne", "horodatage", "compte", "cree_par", "depuis", "nuit(22h-6h)", "week-end", "source_externe", "groupe_admin", "connexions_ensuite", "suspect"])
     ecartees = r["creations"][~r["creations"].suspect]

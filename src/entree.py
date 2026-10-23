@@ -25,6 +25,7 @@ def courriel_piege(d, min_indices=2):
     min_spam = int(ml.loc[ml.verdict == "spam", "score_risque"].min())
     ml["domaine"] = ml.expediteur.str.split("@").str[1]
     freq = ml.domaine.value_counts()
+    # Un domaine n'est considere habituel que s'il apparait au moins MIN_MAILS_USUEL fois.
     usuels = list(freq[freq >= MIN_MAILS_USUEL].index)
 
     def sosie(dom):  # domaine proche d'un domaine habituel sans etre identique
@@ -33,6 +34,7 @@ def courriel_piege(d, min_indices=2):
         proche = difflib.get_close_matches(dom, usuels, n=1, cutoff=0.9)
         return proche[0] if proche else None
 
+    # Les indices ne sont calcules que sur les messages livres, ceux qui ont franchi le filtre.
     livres = ml[ml.verdict == "livre"].copy()
     livres["sosie_de"] = livres.domaine.map(sosie)
     livres["double_extension"] = livres.piece_jointe.fillna("").str.contains(
@@ -41,6 +43,7 @@ def courriel_piege(d, min_indices=2):
     livres["score_limite"] = livres.score_risque >= min_spam - MARGE_SEUIL
     livres["nb_indices"] = (livres.sosie_de.notna().astype(int) + livres.double_extension.astype(int)
                             + livres.avec_lien.astype(int) + livres.score_limite.astype(int))
+    # Le parametre fixe combien d'indices doivent etre reunis pour conserver le message.
     suspects = livres[livres.nb_indices >= min_indices]
     top = livres.nlargest(3, "score_risque")[["ligne", "score_risque", "expediteur"]]
     return suspects, {"max_livre": max_livre, "min_spam": min_spam, "top_scores_livres": top}
@@ -51,7 +54,9 @@ def clic_et_identifiants(d, mail):
     hote = urlparse(mail.lien).hostname
     victime = mail.destinataire.split("@")[0]
     p = d["proxy"]
+    # On recherche les visites du domaine par la victime apres l'heure de livraison.
     vis = p[(p.host == hote) & (p.login == victime) & (p.horodatage >= mail.horodatage)]
+    # L'adresse source du premier acces proxy est utilisee comme identifiant de poste.
     poste = vis.ip_source.iloc[0] if len(vis) else None
     fin = vis.horodatage.max() + pd.Timedelta("30min") if len(vis) else None
     e = d["edr"]
@@ -61,6 +66,7 @@ def clic_et_identifiants(d, mail):
 
 def acces_vpn_suspects(d, victime, apres):
     """Connexions VPN du compte victime depuis un pays inhabituel pour LUI."""
+    # Le pays modal avant l'incident sert de reference individuelle pour ce compte.
     v = d["vpn"]
     mien = v[v.login == victime]
     usuel = mien[mien.horodatage < apres].pays.mode().iloc[0]    # pays habituel avant l'incident
@@ -69,6 +75,7 @@ def acces_vpn_suspects(d, victime, apres):
         return usuel, susp, susp
     ip = susp.ip_source.iloc[0]
     toutes = v[v.ip_source == ip].copy()                         # tout ce que fait cette IP
+    # La fin calculee de session permet ensuite de comparer les activites aux connexions VPN.
     toutes["fin_session"] = toutes.horodatage + pd.to_timedelta(toutes.duree_min, unit="m")
     return usuel, susp, toutes
 
@@ -79,6 +86,7 @@ def analyser(d):
     res["seuil"], res["mails_suspects"] = seuil, suspects
     if suspects.empty:
         return res, evts
+    # Le courriel suspect le plus ancien devient le point de depart de cette reconstruction.
     mail = suspects.sort_values("horodatage").iloc[0]
     victime, hote, poste, vis, alertes = clic_et_identifiants(d, mail)
     res.update(victime=victime, domaine_hameconnage=hote, poste=poste, visites=vis, alertes_edr=alertes)
@@ -87,17 +95,21 @@ def analyser(d):
     res["ip_attaquant"] = toutes.ip_source.iloc[0] if len(toutes) else None
     res["mail"] = mail
 
+    # Chaque preuve est ajoutee a la frise avec son horodatage et sa reference source.
     evts.append(evenement(mail.horodatage, "1 Accès initial", preuve("mail", mail.ligne),
         f"Courriel piégé livré à {victime} (score {mail.score_risque}, seuil de blocage entre "
         f"{seuil['max_livre'] + 1} et {seuil['min_spam']}) : expéditeur {mail.expediteur}, PJ {mail.piece_jointe}, lien {mail.lien}"))
     for _, r in vis.iterrows():
+        # GET indique l'ouverture de page ; POST est interprete comme une saisie probable.
         txt = "envoi du formulaire (identifiants probablement saisis)" if r.methode == "POST" else "ouverture de la page"
         evts.append(evenement(r.horodatage, "1 Accès initial", preuve("proxy", r.ligne),
                               f"{victime} sur {r.ip_source} : {r.methode} {r.host}{r.url} → {txt}"))
     for _, a in alertes.iterrows():
+        # Les alertes du poste sont ajoutees au meme segment temporel que le clic.
         evts.append(evenement(a.horodatage, "1 Accès initial", preuve("edr", a.id),
                               f"Alerte EDR '{a.titre}' ({a.gravite}, statut {a.statut})"))
     for _, r in toutes.iterrows():
+        # Les evenements de cette IP sont rendus lisibles avec leur resultat et leur duree.
         if r.resultat == "echec":
             txt = f"ÉCHEC VPN {r.login} depuis {r.ip_source} ({r.pays}) : {r.motif}"
         else:
@@ -107,19 +119,23 @@ def analyser(d):
 
 
 def main():
+    # Cette commande imprime les preuves detaillees ; l'export commun est gere par chronologie.py.
     d = charger(lire_args(__doc__).donnees)
     r, _ = analyser(d)
     s = r["seuil"]
+    # La premiere section expose les scores et indices qui ont isole le courriel candidat.
     titre("2a. Courriel piégé : livré malgré des indices cumulés")
     print(f"Seuil de blocage non documenté : plus haut score LIVRÉ = {s['max_livre']}, plus bas score BLOQUÉ = {s['min_spam']}")
     print("3 scores les plus élevés parmi les mails livrés (le suspect est isolé ?) :")
     montrer(s["top_scores_livres"])
     montrer(r["mails_suspects"], ["ligne", "horodatage", "expediteur", "destinataire", "piece_jointe", "lien",
                                   "score_risque", "sosie_de", "double_extension", "nb_indices"])
+    # La seconde section relie le mail aux acces proxy et a l'alerte EDR du poste.
     titre(f"2b. Clic et saisie d'identifiants : {r['victime']} sur {r['poste']}")
     montrer(r["visites"], ["ligne", "horodatage", "login", "ip_source", "methode", "host", "url", "statut", "categorie"])
     print("Alerte(s) EDR dans les 30 min suivant le clic :")
     montrer(r["alertes_edr"], ["ligne", "horodatage", "machine", "titre", "gravite", "statut"])
+    # La derniere section montre les evenements VPN et verifie les chevauchements de sessions.
     titre(f"2c. VPN : connexions de {r['victime']} depuis un pays inhabituel (habituel : {r['pays_usuel']})")
     montrer(r["vpn_ip"], ["ligne", "horodatage", "login", "ip_source", "pays", "resultat", "motif", "duree_min", "fin_session"])
     t = r["vpn_ip"]
